@@ -1,0 +1,17 @@
+# -*- coding: utf-8 -*-
+import requests
+
+
+proxy = "180.119.141.42:9999"
+proxies = {
+    'http': 'http://' + proxy,
+    'https': 'https://' + proxy,
+}
+headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/536.3 (KHTML, like Gecko) Chrome/19.0.1062.0 Safari/536.3'}
+try:
+    print("headers", headers)
+    print("proxies", proxies)
+    response = requests.get("http://httpbin.org/get", proxies=proxies, headers=headers, timeout=5)
+    print(response.text)
+except requests.exceptions.ConnectionError as e:
+    print('Error', e.args)
