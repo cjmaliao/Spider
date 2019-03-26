@@ -1,0 +1,89 @@
+# 生产者消费者模式开启列队多线程
+# -*- coding:utf-8 -*-
+''' by cj多线程爬虫小说 '''
+import requests
+from lxml import etree
+import re
+from queue import Queue
+import threading
+import csv
+headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/72.0.3626.121 Safari/537.36"}
+glock = threading.Lock()
+
+
+class Producer(threading.Thread):
+    def __init__(self, page_queue, img_queue, *args, **kwargs):
+        global headers
+        super(Producer, self).__init__(*args, **kwargs)
+        self.page_queue = page_queue
+        self.img_queue = img_queue
+
+    def parse_page(self, url):
+        req = requests.get(url, headers=headers)
+        html = etree.HTML(req.content.decode())
+        url = html.xpath("//span[@class='xing_vb4']/a/@href")
+        for i in url:
+            link = 'http://zuida.me' + i
+            self.img_queue.put(link)
+
+    def run(self):
+        while True:
+            if self.page_queue.empty():
+                break
+            url = self.page_queue.get()
+            self.parse_page(url)
+            print('正在下载当前页面：' + url)
+
+
+class Consumer(threading.Thread):
+    def __init__(self, page_queue, img_queue, *args, **kwargs):
+        global headers
+        super(Consumer, self).__init__(*args, **kwargs)
+        self.page_queue = page_queue
+        self.img_queue = img_queue
+
+    def run(self):
+        while True:
+            if self.page_queue.empty() and self.img_queue.empty():
+                break
+            url = self.img_queue.get()
+            response = requests.get(url=url, headers=headers)
+            res = response.text  # 正则解析
+            txt = etree.HTML(response.content.decode())  # xpath 解析
+            title = re.findall(r'<img class="lazy" src=".*?" alt="(.*?)" />', res)
+            url = re.findall(r'<div id="down_1">.*?<input type="checkbox" name="copy_sel" value="(.*?)" checked="" />.*?</div>', res, re.S)
+            if len(url) != 0:
+                movie_link = url[0]
+            else:
+                movie_link = None
+            info = txt.xpath("//div[@class='ibox playBox']//div[@class='vodplayinfo']/text()")
+            core = txt.xpath("//div[@class='vodh']/label/text()")
+            information = ''.join(info).strip()
+            with open(r'C:\Users\Cj\Desktop\zuida_movie.csv', 'a', newline='', encoding='utf-8-sig') as csvf:
+                glock.acquire()
+                spanwriter = csv.writer(csvf)
+                spanwriter.writerow((title[0], core[0], movie_link, information))
+                print('下载:' + title[0])
+                glock.release()
+
+
+def main():
+    page_queue = Queue(200)
+    img_queue = Queue(2000)
+
+    for i in range(1, 152):
+        url = 'http://zuida.me/?m=vod-type-id-1-pg-%d.html' % i
+        page_queue.put(url)
+
+    for x in range(10):
+        t = Producer(page_queue, img_queue)
+        t.start()
+
+    for x in range(10):
+        t = Consumer(page_queue, img_queue)
+        t.start()
+
+
+if __name__ == '__main__':
+    main()
+
